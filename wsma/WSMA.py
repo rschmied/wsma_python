@@ -297,6 +297,73 @@ class WSMA_SSH(WSMAbase):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
+    #
+    # Get who to talk to and username and password
+    #
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description='Provide device parameters:')
+    parser.add_argument('--host', type=str, required=True,
+                        help="The device IP or DN")
+    parser.add_argument('-u', '--username', type=str, default='cisco',
+                        help="Username for device")
+    parser.add_argument('-p', '--password', type=str, default='cisco',
+                        help="Password for specified user")
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Enable verbose debugging output.")
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+        
+    #
+    # Create the WSMA utility
+    #
+    wsma = WSMA(args.host, args.username, args.password)
+
+    #
+    # Try some simple tests. Not currently handling error conditions
+    # like a failure to connect to the device.
+    #
+    print json.dumps(wsma.wsma_config("interface Loopback99"), indent=4)
+    print json.dumps(wsma.wsma_config("no interface Loopback99"), indent=4)
+
+    #
+    # Variety of show commands
+    #
+    
+    #
+    # Exec commands that use parsing to structured data on router or
+    # switch. Not recommended
+    #
+    print json.dumps(wsma.wsma_exec("show ip int br", format_spec="builtin"), indent=4)
+    print json.dumps(wsma.wsma_exec("show ip int br", format_spec=""), indent=4)
+
+    #
+    # Show IP interfaces, normal
+    #
+    print json.dumps(wsma.wsma_exec("show ip int br"), indent=4)
 
 
+    #
+    # Pick out the OSPF routing process config only
+    #
+    print json.dumps(wsma.wsma_exec("show running-config | sec router ospf"), indent=4)
 
+    #
+    # Look at IP routes and the IP routes summary
+    #
+    print json.dumps(wsma.wsma_exec("show ip route"), indent=4)
+    print json.dumps(wsma.wsma_exec("show ip route summary"), indent=4)
+
+    #
+    # Configure and deconfigure a loopback interface
+    #
+    print json.dumps(wsma.wsma_config("interface Loopback999"), indent=4)
+    print json.dumps(wsma.wsma_config("no interface Loopback999"), indent=4)
+    
+    
+    #
+    # Negative tests, one for exec, one for config.
+    #
+    print json.dumps(wsma.wsma_exec("show ip intbr"), indent=4)
+    print json.dumps(wsma.wsma_config("nonsense command"), indent=4)

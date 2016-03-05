@@ -19,8 +19,9 @@ $ ./update/00show_run.py
 
 ```
 
-You can also use the script ```./enable_wsma.py <ip> <username> <password> ``` to configure WSMA if required on your device.
+You can also use the script ```./enable_wsma.py <ip> <username> <password> ``` to configure WSMA if required on your device.  
+This configures WSMA over https, you can also use HTTP or SSH as a transport.
 
-## exmaples 
-contains a number of examples uses of the module
+## examples
+contains a number of examples uses of the module.  
 
