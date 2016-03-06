@@ -131,7 +131,7 @@ class WSMAbase(object):
         :return: json response
         '''
         correlator = self.build_correlator("config")
-        fail_str = 'actiononfail="%s"' % action_on_fail
+        fail_str = 'action-on-fail="%s"' % action_on_fail
         self.count = self.count+1
         etmplate = ConfigTemplate()
         template_data = etmplate.template.render(CONFIG_CMD=command,
