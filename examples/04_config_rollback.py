@@ -9,8 +9,6 @@ import logging
 
 
 wsma=WSMA(WSMA_IP, WSMA_USER, WSMA_PASSWORD)
-wsma=WSMA(WSMA_IP, "cisco", "cisco")
-
 
 result = wsma.wsma_config("ip access-list extended 101\n permit ip any any \nfed", action_on_fail='rollback')
 print json.dumps(result, indent=4)
