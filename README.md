@@ -3,6 +3,7 @@ This python module shows some examples of interacting with the WSMA (Web Service
 Cisco devices.
 
 WSMA is supported on most Cisco enteprise devices (routers/switches), and first shipped in 2007.
+WSMA can run over http(s) or ssh.
 
 ## Installation
 
