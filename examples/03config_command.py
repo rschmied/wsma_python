@@ -4,7 +4,6 @@ from wsma_config import WSMA_IP, WSMA_USER, WSMA_PASSWORD
 import json
 
 wsma=WSMA(WSMA_IP, WSMA_USER, WSMA_PASSWORD)
-wsma=WSMA(WSMA_IP, "cisco", "cisco")
 
 result = wsma.wsma_config("snmp-server community fred-userxx RO")
 
