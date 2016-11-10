@@ -231,7 +231,8 @@ class WSMA(WSMAbase):
         super(WSMA, self).__init__(host, username, password, port)
         fmt = dict(prot='https' if tls else 'http',
                    host=self.host, port=self.port)
-        self.url = "{prot}://{host}:{port}/wsma".format_map(fmt)
+        # in Python3, should use .format_map(fmt)
+        self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
         self.verify = verify if tls else False
 
     def _run_and_return(self, template_data):
