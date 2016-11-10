@@ -144,7 +144,7 @@ class WSMAbase(object):
         d = self.wsma_exec(command, format_spec)
         try:
             t = d['response']['execLog']['dialogueLog']['received']['text']
-        except IndexError as e:
+        except KeyError as e:
             return 'unknown error'
         if t is not None:
             return t
