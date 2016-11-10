@@ -1,8 +1,7 @@
 # wsma_python
-This python module shows some examples of interacting with the WSMA (Web Services Management Agent) protocol on 
-Cisco devices.
+This Python module shows some examples of interacting with the WSMA (Web Services Management Agent) protocol on Cisco devices.
 
-WSMA is supported on most Cisco enteprise devices (routers/switches), and first shipped in 2007.
+WSMA is supported on most Cisco enterprise devices (routers/switches), and first shipped in 2007.
 WSMA can run over http(s) or ssh.
 
 ## Installation
@@ -44,4 +43,3 @@ end
 
 ## examples
 contains a number of examples uses of the module.  
-

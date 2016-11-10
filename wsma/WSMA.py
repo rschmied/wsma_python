@@ -1,5 +1,4 @@
-__author__ = 'aradford1'
-
+from __future__ import print_function
 import requests
 from requests.exceptions import ConnectionError
 from jinja2 import Template
@@ -9,11 +8,14 @@ import json
 import time
 import paramiko
 import socket
-requests.packages.urllib3.disable_warnings()
-
 import logging
 
+
+__author__ = 'aradford1'
+
+
 class Schema(object):
+
     def __init__(self):
         """
 
@@ -40,6 +42,7 @@ class Schema(object):
 
 
 class ExecTemplate(Schema):
+
     def __init__(self):
         """
 
@@ -58,6 +61,7 @@ class ExecTemplate(Schema):
 
 
 class ConfigTemplate(Schema):
+
     def __init__(self):
         Schema.__init__(self)
         self.body = """<request xmlns="urn:cisco:wsma-config"
@@ -72,7 +76,9 @@ class ConfigTemplate(Schema):
                                         self.body,
                                         self.end_schema))
 
+
 class ConfigPersistTemplate(Schema):
+
     def __init__(self):
         """
 
@@ -88,23 +94,27 @@ class ConfigPersistTemplate(Schema):
                                         self.body,
                                         self.end_schema))
 
+
 class WSMAbase(object):
     '''
     :param host:  hostname of the WSMA server
     :param username: username to connect
     :param password: password for user account
     '''
-    def __init__(self, host, username, password):
+
+    def __init__(self, host, username, password, port):
         if not host:
             raise ValueError("host argument may not be empty")
 
-        self.url = "https://%s/wsma" % host
-        self.auth = (username, password)
+        self.host = host
+        self.username = username
+        self.password = password
+        self.port = port
         self.count = 1
 
     def wsma_exec(self, command, format_spec=None):
         '''
-
+        run given command in exec mode, return JSON response
         :param command: to be run in exec mode on device
         :param format_spec: if there is a ODM spec file for the command
         :return: json response
@@ -118,10 +128,28 @@ class WSMAbase(object):
         template_data = etmplate.template.render(EXEC_CMD=command,
                                                  CORRELATOR=correlator,
                                                  FORMAT=format_text,
-                                                 Username=self.auth[0],
-                                                 Password=self.auth[1])
+                                                 Username=self.username,
+                                                 Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
         return self._run_and_return(template_data)
+
+    def wsma_exec_text(self, command, format_spec=None):
+        '''
+        same as wsma_exec, but returns only the text object or
+        error message if the command was not successful.
+        :param command: to be run in exec mode on device
+        :param format_spec: if there is a ODM spec file for the command
+        :return CLI output
+        '''
+        d = self.wsma_exec(command, format_spec)
+        try:
+            t = d['response']['execLog']['dialogueLog']['received']['text']
+        except IndexError as e:
+            return 'unknown error'
+        if t is not None:
+            return t
+        else:
+            return d['response']['execLog']['errorInfo']['errorMessage']
 
     def wsma_config(self, command, action_on_fail="stop"):
         '''
@@ -132,13 +160,13 @@ class WSMAbase(object):
         '''
         correlator = self.build_correlator("config")
         fail_str = 'action-on-fail="%s"' % action_on_fail
-        self.count = self.count+1
+        self.count = self.count + 1
         etmplate = ConfigTemplate()
         template_data = etmplate.template.render(CONFIG_CMD=command,
                                                  CORRELATOR=correlator,
                                                  ACTION_ON_FAIL=fail_str,
-                                                 Username=self.auth[0],
-                                                 Password=self.auth[1])
+                                                 Username=self.username,
+                                                 Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
 
         return self._run_and_return(template_data)
@@ -151,11 +179,10 @@ class WSMAbase(object):
         correlator = self.build_correlator("config-persist")
         etmplate = ConfigPersistTemplate()
         template_data = etmplate.template.render(CORRELATOR=correlator,
-                                                 Username=self.auth[0],
-                                                 Password=self.auth[1])
+                                                 Username=self.username,
+                                                 Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
         return self._run_and_return(template_data)
-
 
     def build_correlator(self, command):
         '''
@@ -176,13 +203,13 @@ class WSMAbase(object):
         :param xml_text: xml to be converted
         :return: json
         '''
-        logging.info("xml: {0:s}".format(xml_text))
+        logging.debug("xml: {0:s}".format(xml_text))
         if xml_text is None:
-            return {'error' : 'xml body is empty'}
+            return {'error': 'xml body is empty'}
         dom = parseString(xml_text)
         response = dom.getElementsByTagName('response')
         if len(response) == 0:
-            return {'error' : 'no XML "response" received'}
+            return {'error': 'no XML "response" received'}
         response_xml = response[0].toprettyxml()
         return xmltodict.parse(response_xml)
 
@@ -195,11 +222,18 @@ class WSMAbase(object):
         pass
 
 
-
 class WSMA(WSMAbase):
     '''
     This is the HTTP(s) version of transport
     '''
+
+    def __init__(self, host, username, password, port=443, tls=True, verify=True):
+        super(WSMA, self).__init__(host, username, password, port)
+        fmt = dict(prot='https' if tls else 'http',
+                   host=self.host, port=self.port)
+        self.url = "{prot}://{host}:{port}/wsma".format_map(fmt)
+        self.verify = verify if tls else False
+
     def _run_and_return(self, template_data):
         '''
 
@@ -207,45 +241,51 @@ class WSMA(WSMAbase):
         :return: xml_text
         '''
         try:
-            logging.info('Trying {0:s}, {1:s}'.format(self.url, self.auth))
+            logging.info('Trying {}, {}/{}'.format(self.url,
+                                                   self.username,
+                                                   self.password))
+            if not self.verify:
+                requests.packages.urllib3.disable_warnings()
+
             response = requests.post(url=self.url, data=template_data,
-                                     auth=self.auth, verify=False,
-                                     timeout=15)
-            logging.info(response.content)
+                                     auth=(self.username,
+                                           self.password),
+                                     verify=self.verify,
+                                     timeout=60)
+            logging.debug(response.content)
         except ConnectionError as conn_err:
             logging.error("Connection Error {0:s}".format(conn_err))
-            return {'error' : "404 bad connection"}
+            return {'error': "404 bad connection"}
         # this needs to be response.content,
         # otherwise generates unicode string error
         xml_text = response.content.decode("utf-8")
-        logging.info("GOT{0:s}DONE".format(xml_text))
-        if  "401 Unauthorized" in xml_text:
-            return {"error" : "401 Unauthorized"}
+        logging.debug("GOT{0:s}DONE".format(xml_text))
+        if "401 Unauthorized" in xml_text:
+            return {"error": "401 Unauthorized"}
         return self.parse_xml(xml_text)
+
 
 EOM = "]]>]]>"
 BUFSIZ = 16384
+
 
 class WSMA_SSH(WSMAbase):
     '''
     this is the SSH version of transport
     '''
-    def __init__(self, host, username, password):
-        WSMAbase.__init__(self, host, username, password)
-        self.host = host
-        self.username = username
-        self.password = password
+
+    def __init__(self, host, username, password, port=22):
+        super(WSMA_SSH, self).__init__(host, username, password, port)
         self.t = None
         self.cmd_channel = None
-
 
     def connect(self):
         # Socket connection to remote host
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((self.host, 22))
+        sock.connect((self.host, self.port))
         self.t = paramiko.Transport(sock)
         try:
-            logging.debug("connect as %s/%s", self.username, self.password)
+            logging.info("connect as %s/%s", self.username, self.password)
             self.t.connect(username=self.username, password=self.password)
         except paramiko.AuthenticationException:
             logging.error("SSH Authentication failed.")
@@ -263,7 +303,7 @@ class WSMA_SSH(WSMAbase):
             return None
 
     def send(self, buf):
-        logging.info("Sending %s", buf)
+        logging.debug("Sending %s", buf)
         self.cmd_channel.sendall(buf)
         self.cmd_channel.sendall(EOM)
 
@@ -290,13 +330,12 @@ class WSMA_SSH(WSMAbase):
         self.send(template_data)
         response = self.recv()
         self.close()
-        logging.info("GOT{0:s}DONE".format(response))
+        logging.debug("GOT{0:s}DONE".format(response))
         return self.parse_xml(response)
 
 
-
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.ERROR)
     #
     # Get who to talk to and username and password
     #
@@ -314,7 +353,7 @@ if __name__ == "__main__":
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
-        
+
     #
     # Create the WSMA utility
     #
@@ -324,46 +363,44 @@ if __name__ == "__main__":
     # Try some simple tests. Not currently handling error conditions
     # like a failure to connect to the device.
     #
-    print json.dumps(wsma.wsma_config("interface Loopback99"), indent=4)
-    print json.dumps(wsma.wsma_config("no interface Loopback99"), indent=4)
+    print(json.dumps(wsma.wsma_config("interface Loopback99"), indent=4))
+    print(json.dumps(wsma.wsma_config("no interface Loopback99"), indent=4))
 
     #
     # Variety of show commands
     #
-    
+
     #
     # Exec commands that use parsing to structured data on router or
     # switch. Not recommended
     #
-    print json.dumps(wsma.wsma_exec("show ip int br", format_spec="builtin"), indent=4)
-    print json.dumps(wsma.wsma_exec("show ip int br", format_spec=""), indent=4)
+    print(json.dumps(wsma.wsma_exec("show ip int br", format_spec="builtin"), indent=4))
+    print(json.dumps(wsma.wsma_exec("show ip int br", format_spec=""), indent=4))
 
     #
     # Show IP interfaces, normal
     #
-    print json.dumps(wsma.wsma_exec("show ip int br"), indent=4)
-
+    print(json.dumps(wsma.wsma_exec("show ip int br"), indent=4))
 
     #
     # Pick out the OSPF routing process config only
     #
-    print json.dumps(wsma.wsma_exec("show running-config | sec router ospf"), indent=4)
+    print(json.dumps(wsma.wsma_exec("show running-config | sec router ospf"), indent=4))
 
     #
     # Look at IP routes and the IP routes summary
     #
-    print json.dumps(wsma.wsma_exec("show ip route"), indent=4)
-    print json.dumps(wsma.wsma_exec("show ip route summary"), indent=4)
+    print(json.dumps(wsma.wsma_exec("show ip route"), indent=4))
+    print(json.dumps(wsma.wsma_exec("show ip route summary"), indent=4))
 
     #
     # Configure and deconfigure a loopback interface
     #
-    print json.dumps(wsma.wsma_config("interface Loopback999"), indent=4)
-    print json.dumps(wsma.wsma_config("no interface Loopback999"), indent=4)
-    
-    
+    print(json.dumps(wsma.wsma_config("interface Loopback999"), indent=4))
+    print(json.dumps(wsma.wsma_config("no interface Loopback999"), indent=4))
+
     #
     # Negative tests, one for exec, one for config.
     #
-    print json.dumps(wsma.wsma_exec("show ip intbr"), indent=4)
-    print json.dumps(wsma.wsma_config("nonsense command"), indent=4)
+    print(json.dumps(wsma.wsma_exec("show ip intbr"), indent=4))
+    print(json.dumps(wsma.wsma_config("nonsense command"), indent=4))
