@@ -11,20 +11,19 @@ WSMA can run over http(s) or ssh.
 $ virtualenv env
 $ source env/bin/activate
 
-# now copy the code from github
+# now copy the code from GitHub
 $ git clone https://github.com/aradford123/wsma_python
 $ cd wmsa_python
 
 # install it in the virtual environement
 $ python setup.py install
 
-# update exmaples/wsma_config.py to point to your device, with appropriate credentials
+# update examples/wsma_config.py to point to your device, with appropriate credentials
 
-$ ./update/00show_run.py
-
+$ ./examples/00show_run.py
 ```
 
-You can also use the script ```./enable_wsma.py <ip> <username> <password> ``` to configure WSMA if required on your device.  
+You can also use the script `./enable_wsma.py <ip> <username> <password>` to configure WSMA if required on your device.  
 This configures WSMA over https, you can also use HTTP or SSH as a transport.
 
 You can also just paste in this config snippet.  This configures HTTPS transport (also supports SSH/HTTP) and local Authentication (can also support AAA)
@@ -41,5 +40,5 @@ wsma profile listener WSMA
 end
 ```
 
-## examples
-contains a number of examples uses of the module.  
+## Examples
+Contains a number of examples uses of the module.  
