@@ -81,7 +81,7 @@ class _ExecTemplate(_Schema):
 class _ConfigTemplate(_Schema):
 
     def __init__(self):
-        Schema.__init__(self)
+        _Schema.__init__(self)
         self.body = """<request xmlns="urn:cisco:wsma-config"
                 correlator="{{CORRELATOR}}">
               <configApply details="all" {{ACTION_ON_FAIL}}>
@@ -163,7 +163,7 @@ class WSMAbase(object):
         self.success = False
         self.result = result
 
-        logging.debug("###%s###", json.dumps(result, indent=4))
+        logging.info("###%s###", json.dumps(result, indent=4))
 
         if self.result is None:
             return False
