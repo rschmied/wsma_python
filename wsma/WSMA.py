@@ -153,43 +153,56 @@ class WSMAbase(object):
         '''
         return self._wsma_process()
 
-    def _wsma_process(self, result):
+    def _wsma_process(self, data):
         '''
         :process CLI output
         :updates self.success, result and text
         :returns Bool for success 
         '''
-        self.text = 'unknown error / no data'
+        self.output = ''
+        self.message = ''
+        self.data = data
         self.success = False
-        self.result = result
 
-        logging.info("###%s###", json.dumps(result, indent=4))
+        logging.info("###%s###", json.dumps(data, indent=4))
 
-        if self.result is None:
+        if self.data is None:
             return False
 
         # was it successful?
         try:
-            self.success = bool(int(self.result['response']['@success']))
+            self.success = bool(int(self.data['response']['@success']))
         except KeyError:
-            self.text = 'unknown error / key error'
+            self.message = 'unknown error / key error'
 
-        # config or exec?
-        if self.result['response']['@xmlns'] == "urn:cisco:wsma-exec":
+        # exec mode?
+        if self.data['response']['@xmlns'] == "urn:cisco:wsma-exec":
             if self.success:
-                t = result['response']['execLog'][
+                t = self.data['response']['execLog'][
                     'dialogueLog']['received']['text']
                 t = '' if t is None else t
-            else:
-                e = result['response']['execLog']['errorInfo']['errorMessage']
-        else:
+                self.output = t
+                return True
+
+            if not self.success:
+                e = self.data['response']['execLog']['errorInfo']['errorMessage']
+                self.message = e
+                return False
+
+        # config mode?
+        if self.data['response']['@xmlns'] == "urn:cisco:wsma-config":
             if self.success:
                 t = 'config mode / not applicable'
-            else:
-                e = result['response']['resultEntry']['text']
+                self.output = t
+                return True
 
-        self.text = t if self.success else e
-        return self.success
+            if not self.success:
+                e = self.data['response']['resultEntry']['text']
+                self.message = e
+                return False
+
+        # catch all
+        return False
 
     def wsma_exec(self, command, format_spec=None):
         '''
