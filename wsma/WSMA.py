@@ -17,8 +17,10 @@ http://www.cisco.com/c/en/us/td/docs/ios/netmgmt/configuration/guide/Convert/WSM
 
 
 from __future__ import print_function
+from abc import ABCMeta, abstractmethod
 import requests
 from requests.exceptions import ConnectionError
+from ssl import SSLError
 from jinja2 import Template
 from xml.dom.minidom import parseString
 import xmltodict
@@ -113,7 +115,7 @@ class _ConfigPersistTemplate(_Schema):
                                         self.end_schema))
 
 
-class WSMAbase(object):
+class WSMAbase(object, metaclass=ABCMeta):
     '''
     :param host:  hostname of the WSMA server
     :param username: username to connect
@@ -128,52 +130,79 @@ class WSMAbase(object):
         self.username = username
         self.password = password
         self.port = port
-        self.count = 1
         self.success = False
-        self.result = None
-        self.text = ''
+        self.output = ''
+        self.data = None
 
-    def _build_correlator(self, command):
+        # session holds the transport session
+        self._session = None
+        # count is used for the correlator over
+        # the existence of the session
+        self._count = 0
+
+    def __enter__(self):
+        logging.debug('WITH/AS connect session')
+        self.connect()
+        return self if self._ping() else None
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logging.debug('WITH/AS disconnect session')
+        self.disconnect()
+
+    def _ping(self):
+        """
+        test the connection, does it make sense to continue?
+        it is assumed that 
+        1) wsma is configured on the device (how could we connect otherwise?)
+        2) this is a priv-lvl-1 command
+        3) this command is platform independent for platforms supporting WSMA
+
+        an alternative would be "show version"
+
+        :returns: Bool
+        """
+        return self.execCLI("show wsma id")
+
+    def _buildCorrelator(self, command):
         '''
 
         :param command: used to make a unique string to return as a correlator
         :return:
         '''
         result = time.strftime("%H%M%S")
-        result += "-%s" % str(self.count)
+        result += "-%s" % str(self._count)
         result += ''.join(command.split())
-        self.count += 1
+        self._count += 1
         return result
 
-    def _run_and_return(self, template_data):
+    def _process(self, data):
         '''
-        needs to be implemented in child
-        :param template_data: will be xml format data to be sent in transaction
-        :return:
-        '''
-        return self._wsma_process()
+        the following class variables get populated:
+        - success: was the call successful (bool)
+        - output: holds CLI output (e.g. for show commands), (string)
+                  if the call wass successful.
+                  it holds the error message (typos, config and exec)
+                  if not successful
+        - data: holds the raw dict (as returned from the device)
 
-    def _wsma_process(self, data):
-        '''
         :process CLI output
-        :updates self.success, result and text
+        :updates self.success, self.output and self.data
         :returns Bool for success 
         '''
-        self.output = ''
-        self.message = ''
-        self.data = data
         self.success = False
-
-        logging.info("###%s###", json.dumps(data, indent=4))
+        self.output = ''
+        self.data = data
 
         if self.data is None:
             return False
+
+        logging.info("JSON data: %s", json.dumps(self.data, indent=4))
 
         # was it successful?
         try:
             self.success = bool(int(self.data['response']['@success']))
         except KeyError:
-            self.message = 'unknown error / key error'
+            self.output = 'unknown error / key error'
 
         # exec mode?
         if self.data['response']['@xmlns'] == "urn:cisco:wsma-exec":
@@ -185,8 +214,9 @@ class WSMAbase(object):
                 return True
 
             if not self.success:
-                e = self.data['response']['execLog']['errorInfo']['errorMessage']
-                self.message = e
+                e = self.data['response']['execLog'][
+                    'errorInfo']['errorMessage']
+                self.output = e
                 return False
 
         # config mode?
@@ -197,21 +227,58 @@ class WSMAbase(object):
                 return True
 
             if not self.success:
-                e = self.data['response']['resultEntry']['text']
-                self.message = e
+                re = self.data['response']['resultEntry']
+                # multi line config input returns list
+                if type(re) is list:
+                    results = re
+                else:
+                    results = list()
+                    results.append(re)
+
+                # look for first failed element
+                for line in results:
+                    if line.get('failure'):
+                        self.output = line.get('text')
+                        break
                 return False
 
         # catch all
         return False
 
-    def wsma_exec(self, command, format_spec=None):
+    @abstractmethod
+    def communicate(self, template_data):
+        '''
+        Needs to be overwritten in subclass, it should process the
+        'template_data', pass the resulting data through _process()
+        and then return the data to the caller.
+
+        :param template_data: will be xml format data to be sent in transaction
+        :return:
+        '''
+        pass
+
+    @abstractmethod
+    def connect(self):
+        '''
+        connects to the WSMA host via a specific transport.
+        The specific implementation has to be provided by
+        the subclass. tls, ssh and http(s) are usable in IOS.
+        '''
+        logging.info("connect to {} as {}/{}".format(self.url,
+                                                     self.username, self.password))
+
+    @abstractmethod
+    def disconnect(self):
+        logging.info("disconnect from {}".format(self.url))
+
+    def execCLI(self, command, format_spec=None):
         '''
         run given command in exec mode, return JSON response
         :param command: to be run in exec mode on device
         :param format_spec: if there is a ODM spec file for the command
         :return: Bool, updates result, text and success
         '''
-        correlator = self._build_correlator("exec" + command)
+        correlator = self._buildCorrelator("exec" + command)
         if format_spec is not None:
             format_text = 'format="%s"' % format_spec
         else:
@@ -223,18 +290,18 @@ class WSMAbase(object):
                                                  Username=self.username,
                                                  Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
-        return self._run_and_return(template_data)
+        return self.communicate(template_data)
 
-    def wsma_config(self, command, action_on_fail="stop"):
+    def config(self, command, action_on_fail="stop"):
         '''
 
         :param command: config block to be applied to the device
         :param action_on_fail, can be "stop", "continue", "rollback"
         :return: Bool, updates result, text and success
         '''
-        correlator = self._build_correlator("config")
+        correlator = self._buildCorrelator("config")
         fail_str = 'action-on-fail="%s"' % action_on_fail
-        self.count = self.count + 1
+        self._count += 1
         etmplate = _ConfigTemplate()
         template_data = etmplate.template.render(CONFIG_CMD=command,
                                                  CORRELATOR=correlator,
@@ -242,37 +309,53 @@ class WSMAbase(object):
                                                  Username=self.username,
                                                  Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
-        return self._run_and_return(template_data)
+        return self.communicate(template_data)
 
-    def wsma_config_persist(self):
+    def configPersist(self):
         '''
 
         :return: Bool, updates result, text and success
         '''
-        correlator = self._build_correlator("config-persist")
+        correlator = self._buildCorrelator("config-persist")
         etmplate = _ConfigPersistTemplate()
         template_data = etmplate.template.render(CORRELATOR=correlator,
                                                  Username=self.username,
                                                  Password=self.password)
         logging.debug("Template {0:s}".format(template_data))
-        return self._run_and_return(template_data)
+        return self.communicate(template_data)
 
     @staticmethod
-    def parse_xml(xml_text):
+    def parseXML(xml_text):
         '''
 
         :param xml_text: xml to be converted
         :return: json
         '''
-        logging.debug("xml: {0:s}".format(xml_text))
+
         if xml_text is None:
-            return {'error': 'xml body is empty'}
+            return {'error': 'XML body is empty'}
+
+        """
+        from lxml import etree
+        etree.register_namespace("SOAP", "http://schemas.xmlsoap.org/soap/envelope/")
+        element = etree.fromstring(xml_text.encode('utf-8'))
+        print('#' * 40)
+        print(etree.tostring(element, pretty_print=True).decode('utf-8'))
+        print(json.dumps(xmltodict.parse(xml_text), indent=4))
+        """
+
+        logging.debug("XML string: {}".format(xml_text))
         dom = parseString(xml_text)
+        logging.debug("XML tree:{}".format(dom.childNodes[-1].toprettyxml()))
+
         response = dom.getElementsByTagName('response')
-        if len(response) == 0:
-            return {'error': 'no XML "response" received'}
-        response_xml = response[0].toprettyxml()
-        return xmltodict.parse(response_xml)
+        if len(response) > 0:
+            return xmltodict.parse(response[0].toxml())
+
+        return xmltodict.parse(
+            dom.getElementsByTagNameNS(
+                "http://schemas.xmlsoap.org/soap/envelope/", 
+                "Envelope")[0].toxml())
 
 
 class WSMA(WSMAbase):
@@ -287,45 +370,44 @@ class WSMA(WSMAbase):
         # in Python3, should use .format_map(fmt)
         self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
         self.verify = verify if tls else False
-        self._session = requests.session()
 
-        # this is global
+    def connect(self):
+        super(WSMA, self).connect()
+        self._session = requests.Session()
+        self._session.auth = (self.username, self.password)
         if not self.verify:
             requests.packages.urllib3.disable_warnings()
 
-    def _run_and_return(self, template_data):
+    def disconnect(self):
+        self._session.close()
+
+    def communicate(self, template_data):
         '''
 
         :param template_data: xml data to be send
         :return: json response
         '''
         try:
-            logging.info('Trying {}, {}/{}'.format(self.url,
-                                                   self.username,
-                                                   self.password))
-
             r = self._session.post(url=self.url, data=template_data,
-                                   auth=(self.username,
-                                         self.password),
                                    verify=self.verify,
                                    timeout=60)
-            logging.debug(r.content)
-        except ConnectionError as conn_err:
-            logging.error("Connection Error {0:s}".format(conn_err))
-            return {"error": "400 bad connection"}
-        # this needs to be response.content,
-        # otherwise generates unicode string error
-        logging.info("status %s", str(r.status_code))
-        if not r.ok:
+            logging.debug("DATA: %s", r.text)
+        except (ConnectionError, SSLError) as e:
+            logging.error("Connection Error {}".format(e))
+            self.success = False
+            self.output = e
             return False
 
+        logging.info("status %s", str(r.status_code))
+        if not r.ok:
+            self.success = False
+            self.output = r.text
+            return False
+
+        # this needs to be response.content,
+        # otherwise generates unicode string error
         xml_text = r.content.decode("utf-8")
-        logging.debug("GOT{0:s}DONE".format(xml_text))
-        return self._wsma_process(self.parse_xml(xml_text))
-
-
-EOM = "]]>]]>"
-BUFSIZ = 16384
+        return self._process(self.parseXML(xml_text))
 
 
 class WSMA_SSH(WSMAbase):
@@ -333,26 +415,36 @@ class WSMA_SSH(WSMAbase):
     this is the SSH version of transport
     '''
 
+    EOM = "]]>]]>"
+    BUFSIZ = 16384
+
     def __init__(self, host, username, password, port=22):
         super(WSMA_SSH, self).__init__(host, username, password, port)
-        self.t = None
-        self.cmd_channel = None
+        self.session = None
+        self._cmd_channel = None
+        fmt = dict(prot='ssh', host=self.host, port=self.port)
+        # in Python3, should use .format_map(fmt)
+        self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
 
-    def _connect(self):
+    def connect(self):
+        super(WSMAbase).connect()
+
         # Socket connection to remote host
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.host, self.port))
-        self.t = paramiko.Transport(sock)
+        self.session = paramiko.Transport(sock)
         try:
-            logging.info("connect as %s/%s", self.username, self.password)
-            self.t.connect(username=self.username, password=self.password)
+            self.session.connect(username=self.username,
+                                 password=self.password)
         except paramiko.AuthenticationException:
             logging.error("SSH Authentication failed.")
             return None
+
         # Start a wsma channel
-        self.cmd_channel = self.t.open_session()
-        self.cmd_channel.set_name("wsma")
-        self.cmd_channel.invoke_subsystem('wsma')
+        self._cmd_channel = self.session.open_session()
+        self._cmd_channel.set_name("wsma")
+        self._cmd_channel.invoke_subsystem('wsma')
+
         # should we look for the "wsma-hello" message?
         hello = self.recv()
         idx = hello.find("wsma-hello")
@@ -363,102 +455,28 @@ class WSMA_SSH(WSMAbase):
 
     def _send(self, buf):
         logging.debug("Sending %s", buf)
-        self.cmd_channel.sendall(buf)
-        self.cmd_channel.sendall(EOM)
+        self._cmd_channel.sendall(buf)
+        self._cmd_channel.sendall(EOM)
 
     def _recv(self):
         bytes = ""
-        while len(bytes) < 6:
-            x = self.cmd_channel.recv(BUFSIZ)
+        while len(bytes) < len(EOM):
+            x = self._cmd_channel.recv(BUFSIZ)
             if x == "":
                 return bytes
             bytes += x
-        idx = bytes.find("]]>]]>")
+        idx = bytes.find(EOM)
         if idx > -1:
             return bytes[:idx]
 
-    def _close(self):
+    def disconnect(self):
         # Cleanup
-        self.cmd_channel.close()
-        self.t.close()
+        self._cmd_channel.close()
+        self.session.close()
 
-    def _run_and_return(self, template_data):
+    def communicate(self, template_data):
         # need to check return code
-        self._connect()
         self._send(template_data)
         response = self._recv()
-        self._close()
-        logging.debug("GOT{0:s}DONE".format(response))
-        return self._wsma_process(self.parse_xml(response))
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.ERROR)
-    #
-    # Get who to talk to and username and password
-    #
-    from argparse import ArgumentParser
-    parser = ArgumentParser(description='Provide device parameters:')
-    parser.add_argument('--host', type=str, required=True,
-                        help="The device IP or DN")
-    parser.add_argument('-u', '--username', type=str, default='cisco',
-                        help="Username for device")
-    parser.add_argument('-p', '--password', type=str, default='cisco',
-                        help="Password for specified user")
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help="Enable verbose debugging output.")
-    args = parser.parse_args()
-
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-
-    #
-    # Create the WSMA utility
-    #
-    wsma = WSMA(args.host, args.username, args.password)
-
-    #
-    # Try some simple tests. Not currently handling error conditions
-    # like a failure to connect to the device.
-    #
-    print(json.dumps(wsma.wsma_config("interface Loopback99"), indent=4))
-    print(json.dumps(wsma.wsma_config("no interface Loopback99"), indent=4))
-
-    #
-    # Variety of show commands
-    #
-
-    #
-    # Exec commands that use parsing to structured data on router or
-    # switch. Not recommended
-    #
-    print(json.dumps(wsma.wsma_exec("show ip int br", format_spec="builtin"), indent=4))
-    print(json.dumps(wsma.wsma_exec("show ip int br", format_spec=""), indent=4))
-
-    #
-    # Show IP interfaces, normal
-    #
-    print(json.dumps(wsma.wsma_exec("show ip int br"), indent=4))
-
-    #
-    # Pick out the OSPF routing process config only
-    #
-    print(json.dumps(wsma.wsma_exec("show running-config | sec router ospf"), indent=4))
-
-    #
-    # Look at IP routes and the IP routes summary
-    #
-    print(json.dumps(wsma.wsma_exec("show ip route"), indent=4))
-    print(json.dumps(wsma.wsma_exec("show ip route summary"), indent=4))
-
-    #
-    # Configure and deconfigure a loopback interface
-    #
-    print(json.dumps(wsma.wsma_config("interface Loopback999"), indent=4))
-    print(json.dumps(wsma.wsma_config("no interface Loopback999"), indent=4))
-
-    #
-    # Negative tests, one for exec, one for config.
-    #
-    print(json.dumps(wsma.wsma_exec("show ip intbr"), indent=4))
-    print(json.dumps(wsma.wsma_config("nonsense command"), indent=4))
+        logging.debug("DATA: %s", response)
+        return self._process(self.parseXML(response))
