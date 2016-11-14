@@ -80,14 +80,12 @@ if __name__ == "__main__":
         execCLI('show format built-in')
         
         print("\n### Use built-in format specification:\n")
-        wsma.execCLI('show ip interface brief', format_spec='builtin')
-        if wsma.success:
-            import json
-            print(json.dumps(wsma.odmFormatResult, indent=2))
-        wsma.execCLI('show inventory', format_spec='builtin')
-        if wsma.success:
-            import json
-            print(json.dumps(wsma.odmFormatResult, indent=2))
+        cmds = ['show ip interface brief', 'show inventory']
+        for cmd in cmds:
+            wsma.execCLI(cmd, format_spec='builtin')
+            if wsma.success:
+                import json
+                print(json.dumps(wsma.odmFormatResult, indent=2))
 
         ''' 
         # beware: execCLI does not like multi-line commands
