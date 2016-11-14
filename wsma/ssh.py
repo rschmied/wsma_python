@@ -30,6 +30,22 @@ class SSH(Base):
         # in Python3, should use .format_map(fmt)
         self.url = "{prot}://{host}:{port}".format(**fmt)
 
+    def _send(self, buf):
+        logging.debug("Sending %s", buf)
+        self._cmd_channel.sendall(buf)
+        self._cmd_channel.sendall(self.EOM)
+
+    def _recv(self):
+        bytes = ""
+        while len(bytes) < len(self.EOM):
+            x = self._cmd_channel.recv(self.BUFSIZ)
+            if x == "":
+                return bytes
+            bytes += x
+        idx = bytes.find(self.EOM)
+        if idx > -1:
+            return bytes[:idx]
+
     def connect(self):
         '''Connect to the WSMA service using SSH
         '''
@@ -59,26 +75,10 @@ class SSH(Base):
             logging.error("No wsma-hello from host")
             return None
 
-    def _send(self, buf):
-        logging.debug("Sending %s", buf)
-        self._cmd_channel.sendall(buf)
-        self._cmd_channel.sendall(self.EOM)
-
-    def _recv(self):
-        bytes = ""
-        while len(bytes) < len(self.EOM):
-            x = self._cmd_channel.recv(self.BUFSIZ)
-            if x == "":
-                return bytes
-            bytes += x
-        idx = bytes.find(self.EOM)
-        if idx > -1:
-            return bytes[:idx]
-
     def disconnect(self):
         '''Disconnect the SSH session
         '''
-        super(SSH, self).connect()
+        super(SSH, self).disconnect()
         self._cmd_channel.close()
         self.session.close()
 
