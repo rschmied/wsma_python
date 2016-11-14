@@ -8,6 +8,7 @@ import wsma
 from argparse import ArgumentParser
 import logging
 import readline
+import sys
 
 def main(argv):
 
