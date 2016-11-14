@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-""" WSMA -- SSH transport """
+""" WSMA SSH transport """
 
 from wsma.base import Base
 import paramiko
@@ -8,19 +8,22 @@ import socket
 import logging
 
 
-__author__ = 'aradford1'
-
-
 class SSH(Base):
-    '''
-    this is the SSH version of transport
+    '''This is the SSH version of transport.
+    It returns a :class:`SSH <SSH>` object
+
+    :param host: FQDN or IP (str)
+    :param username: username (str)
+    :param password: password for user (str)
+    :param port: which port to connec to? (int)
+    :param \*\*kwargs: Optional arguments that ``.Base`` takes.
     '''
 
     EOM = "]]>]]>"
     BUFSIZ = 16384
 
     def __init__(self, host, username, password, port=22):
-        super(SSH, self).__init__(host, username, password, port)
+        super(SSH, self).__init__(host, username, password, port, **kwargs)
         self.session = None
         self._cmd_channel = None
         fmt = dict(prot='ssh', host=self.host, port=self.port)
@@ -28,6 +31,8 @@ class SSH(Base):
         self.url = "{prot}://{host}:{port}".format(**fmt)
 
     def connect(self):
+        '''Connect to the WSMA service using SSH
+        '''
         super(SSH, self).connect()
 
         # Socket connection to remote host
@@ -71,12 +76,15 @@ class SSH(Base):
             return bytes[:idx]
 
     def disconnect(self):
-        # Cleanup
+        '''Disconnect the SSH session
+        '''
+        super(SSH, self).connect()
         self._cmd_channel.close()
         self.session.close()
 
     def communicate(self, template_data):
-        # need to check return code
+        '''Communicate with the WSMA service using SSH
+        '''
         self._send(template_data)
         response = self._recv()
         logging.debug("DATA: %s", response)

@@ -81,7 +81,6 @@ def main(argv):
             else:
                 if len(line) > 0:
                     execCLI(line)
-        # exit()
 
 
 if __name__ == "__main__":

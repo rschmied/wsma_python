@@ -90,7 +90,7 @@ def main(argv):
 
         # behaves weird
         # filter only affects output from second command
-        # but adding filter to first command does not working
+        # but adding filter to first command does not work
         # as expected
         print("\n### mult-line exec command\n")
         execCLI("""show int gi1

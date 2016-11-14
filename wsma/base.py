@@ -1,33 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-WSMA
-
-The Web Services Management Agent (WSMA) defines a mechanism through which a
-network device can be managed, configuration data information can be
-retrieved, and new configuration data can be uploaded and manipulated. WSMA
-uses Extensible Markup Language (XML)-based data encoding, that is transported
-by the Simple Object Access Protocol (SOAP), for the configuration data and
-protocol messages.
-
-References:
-
-WSMA Configuration Guide, Cisco IOS Release 15.1M
-http://www.cisco.com/c/en/us/td/docs/ios/netmgmt/configuration/guide/Convert/WSMA/nm_cfg_wsma.html
-
-Cisco IOS Web Services Management Agent Command Reference
-http://www.cisco.com/c/en/us/td/docs/ios-xml/ios/wsma/command/wsma-cr-book/wsma-cr-a1.html
-
-WSMA SDK / PDF:
-https://developer.cisco.com/fileMedia/download/3d65c079-122e-4702-a1ee-233cdf565cb1
-
-Cisco IOS XML-PI Command Reference
-http://www.cisco.com/c/en/us/td/docs/ios-xml/ios/xmlpi/command/xmlpi-cr-book/xmlpi-cr-p1.html
-
-CISCO IOS XML RULE EDITOR USER GUIDE
-https://developer.cisco.com/fileMedia/download/c3c98397-5204-4ae6-8678-782239d05ce8
+This defines the base class for the WSMA Python module.
 """
-
 
 from abc import ABCMeta, abstractmethod
 from jinja2 import Template
@@ -37,9 +12,6 @@ import xmltodict
 import json
 import time
 import logging
-
-
-__author__ = 'aradford1'
 
 
 class _Schema(object):
@@ -124,15 +96,29 @@ class _ConfigPersistTemplate(_Schema):
 
 
 class Base(object):
-    '''
+    '''The base class for all WSMA transports.
+
+    Provides the groundwork for specified transports.
+    WSMA defines the following transports:
+
+    - SSH
+    - HTTP / HTTPS
+    - TLS
+
+    this is the WSMA :class:`Base <Base>` class
+
     :param host:  hostname of the WSMA server
-    :param username: username to connect
-    :param password: password for user account
+    :param username: username to use
+    :param password: password for the username
+    :param port: port to connect to
+    :param timeout: timeout for transport
     '''
 
     __metaclass__ = ABCMeta
 
     def __init__(self, host, username, password, port, timeout=60):
+        super(Base, self).__init__()
+
         if not host:
             raise ValueError("host argument may not be empty")
 
@@ -140,7 +126,7 @@ class Base(object):
         self.host = host
         self.username = username
         self.password = password
-        self.port = int(port)
+        self.port = port
         self.success = False
         self.output = ''
         self.data = None
@@ -161,24 +147,26 @@ class Base(object):
         self.disconnect()
 
     def _ping(self):
-        """
-        test the connection, does it make sense to continue?
+        '''Test the connection, does it make sense to continue?
         it is assumed that
+
         1) wsma is configured on the device (how could we connect otherwise?)
         2) this is a priv-lvl-1 command
         3) this command is platform independent for platforms supporting WSMA
 
         an alternative would be "show version"
 
-        :returns: Bool
-        """
+        :rtype: bool
+        '''
         return self.execCLI("show wsma id")
 
     def _buildCorrelator(self, command):
-        '''
+        '''Build a correlator for each command. Consists of
+        - command to be sent -and-
+        - timestamp
 
         :param command: used to make a unique string to return as a correlator
-        :return:
+        :rtype: str
         '''
         result = time.strftime("%H%M%S")
         result += "-%s" % str(self._count)
@@ -187,18 +175,16 @@ class Base(object):
         return result
 
     def _process(self, data):
-        '''
-        the following class variables get populated:
+        '''Process the given data dict and populate instance vars:
         - success: was the call successful (bool)
         - output: holds CLI output (e.g. for show commands), (string)
                   if the call wass successful.
                   it holds the error message (typos, config and exec)
                   if not successful
-        - data: holds the raw dict (as returned from the device)
+        - data: holds the raw dict from the device
 
-        :process CLI output
-        :updates self.success, self.output and self.data
-        :returns Bool for success
+        :param data: dictionary with response data
+        :rtype: bool
         '''
         self.success = False
         self.output = ''
@@ -262,43 +248,53 @@ class Base(object):
 
     @abstractmethod
     def communicate(self, template_data):
-        '''
-        Needs to be overwritten in subclass, it should process the
-        'template_data', pass the resulting data through _process()
-        and then return the data to the caller.
+        '''Needs to be overwritten in subclass, it should process the
+        'template_data' by sending it using the selected transport.
+        Then pass the received response data through _process(),
+        returning the result from _process().
 
-        :param template_data: will be xml format data to be sent in transaction
-        :return:
+        :param template_data: XML string to be sent in transaction
+        :rtype: bool
         '''
         pass
 
     @abstractmethod
     def connect(self):
-        '''
-        connects to the WSMA host via a specific transport.
+        '''Connects to the WSMA host via a specific transport.
         The specific implementation has to be provided by
         the subclass. tls, ssh and http(s) are usable in IOS.
         '''
         logging.info("connect to {} as {}/{}".format(self.url,
-                                                     self.username, self.password))
+                                                     self.username,
+                                                     self.password))
 
     @abstractmethod
     def disconnect(self):
+        '''Disconnects the transport
+        '''
         logging.info("disconnect from {}".format(self.url))
 
     @property
     def odmFormatResult(self):
+        '''When using format specifications (e.g. structured data
+        instead of unstructured CLI output) then this property
+        holds the structured data as an object.
+        '''
         try:
             return self.data['response']['execLog']['dialogueLog']['received']['tree']
         except KeyError:
             return None
 
     def execCLI(self, command, format_spec=None):
-        '''
-        run given command in exec mode, return JSON response
-        :param command: to be run in exec mode on device
+        '''Run given command in exec mode, return JSON response. The
+        On success, self.output and self.success will be updated.
+
+        If format_spec is given (and valid), odmFormatResult will
+        contain the dictionary with the result data.
+
+        :param command: command string to be run in exec mode on device
         :param format_spec: if there is a ODM spec file for the command
-        :return: Bool, updates result, text and success
+        :rtype: bool
         '''
         correlator = self._buildCorrelator("exec" + command)
         if format_spec is not None:
@@ -316,11 +312,12 @@ class Base(object):
         return self.communicate(template_data)
 
     def config(self, command, action_on_fail="stop"):
-        '''
+        '''Execute given commands in configuration mode.
+        On success, self.output and self.success will be updated.
 
         :param command: config block to be applied to the device
         :param action_on_fail, can be "stop", "continue", "rollback"
-        :return: Bool, updates result, text and success
+        :rtype: bool
         '''
         correlator = self._buildCorrelator("config")
         fail_str = 'action-on-fail="%s"' % action_on_fail
@@ -335,9 +332,9 @@ class Base(object):
         return self.communicate(template_data)
 
     def configPersist(self):
-        '''
+        '''Makes configuration changes persistent.
 
-        :return: Bool, updates result, text and success
+        :rtype: bool
         '''
         correlator = self._buildCorrelator("config-persist")
         etmplate = _ConfigPersistTemplate()
@@ -349,12 +346,18 @@ class Base(object):
 
     @staticmethod
     def parseXML(xml_text):
-        '''
+        '''Parses given XML string and returns the 'response' child within the
+        XML tree. If no response is found, the SOAP 'Envelope' is returned.
 
-        :param xml_text: xml to be converted
-        :return: json
-        '''
+        If an empty string is used or an error occurs during parsing then
+        dict(error='some error string') is returned.
 
+        This still assumes that IF an XML string is passed into
+        this function then it should have a valid SOAP Envelope.
+
+        :param xml_text: XML string to be converted
+        :rtype: dict
+        '''
         if xml_text is None:
             return {'error': 'XML body is empty'}
 

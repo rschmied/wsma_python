@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-""" WSMA -- HTTP transport """
+""" WSMA HTTP transport """
 
 from wsma.base import Base
 import requests
@@ -9,16 +9,22 @@ from ssl import SSLError
 import logging
 
 
-__author__ = 'aradford1'
-
-
 class HTTP(Base):
-    '''
-    This is the HTTP(s) version of transport
+    '''This is the HTTP(s) version of transport.
+    It returns a :class:`HTTP <HTTP>` object
+
+    :param host: FQDN or IP (str)
+    :param username: username (str)
+    :param password: password for user (str)
+    :param port: which port to connec to? (int)
+    :param tls: Use HTTPS transport? (bool)
+    :param verify: SSL verification (bool)
+    :param \*\*kwargs: Optional arguments that ``.Base`` takes.
     '''
 
-    def __init__(self, host, username, password, port=443, tls=True, verify=True):
-        super(HTTP, self).__init__(host, username, password, port)
+    def __init__(self, host, username, password, port=443,
+                 tls=True, verify=True, **kwargs):
+        super(HTTP, self).__init__(host, username, password, port, **kwargs)
         fmt = dict(prot='https' if tls else 'http',
                    host=self.host, port=self.port)
         # in Python3, should use .format_map(fmt)
@@ -26,6 +32,8 @@ class HTTP(Base):
         self.verify = verify if tls else False
 
     def connect(self):
+        '''Connect to the WSMA service using HTTP(S)
+        '''
         super(HTTP, self).connect()
         self._session = requests.Session()
         self._session.auth = (self.username, self.password)
@@ -33,13 +41,16 @@ class HTTP(Base):
             requests.packages.urllib3.disable_warnings()
 
     def disconnect(self):
+        '''Disconnect the session
+        '''
+        super(HTTP, self).connect()
         self._session.close()
 
     def communicate(self, template_data):
-        '''
+        '''Overwrites base method, implements HTTP transport.
 
         :param template_data: xml data to be send
-        :return: json response
+        :rtype: json response
         '''
         try:
             r = self._session.post(url=self.url, data=template_data,
