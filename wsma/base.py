@@ -123,12 +123,14 @@ class _ConfigPersistTemplate(_Schema):
                                         self.end_schema))
 
 
-class Base(object, metaclass=ABCMeta):
+class Base(object):
     '''
     :param host:  hostname of the WSMA server
     :param username: username to connect
     :param password: password for user account
     '''
+
+    __metaclass__ = ABCMeta
 
     def __init__(self, host, username, password, port, timeout=60):
         if not host:
@@ -138,7 +140,7 @@ class Base(object, metaclass=ABCMeta):
         self.host = host
         self.username = username
         self.password = password
-        self.port = port
+        self.port = int(port)
         self.success = False
         self.output = ''
         self.data = None
