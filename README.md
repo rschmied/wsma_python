@@ -26,7 +26,7 @@ $ ./examples/00show_run.py
 You can also use the script `./enable_wsma.py <ip> <username> <password>` to configure WSMA if required on your device.  
 This configures WSMA over https, you can also use HTTP or SSH as a transport.
 
-You can also just paste in this config snippet.  This configures HTTPS transport (also supports SSH/HTTP) and local Authentication (can also support AAA)
+You can also just paste in this config snippet.  This configures the HTTPS transport (also supports SSH/HTTP) and local authentication (can also support AAA)
 
 ```
 ip http secure-server
