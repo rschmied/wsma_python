@@ -3,7 +3,7 @@
 
 
 from __future__ import print_function
-from WSMA import WSMA
+import wsma
 from argparse import ArgumentParser
 import logging
 import readline
@@ -23,8 +23,8 @@ if __name__ == "__main__":
                         help="Port of WSMA agent.")
     parser.add_argument('-n', '--notls', default=False, action='store_true',
                         help="Don't use TLS")
-    parser.add_argument('-l', '--loglevel', type=int, choices=range(0, 5), default=2,
-                        help="loglevel, 0-4 (default is 2)")
+    parser.add_argument('-l', '--loglevel', type=int, choices=range(0, 5),
+                        default=2, help="loglevel, 0-4 (default is 2)")
     args = parser.parse_args()
 
     # setup logging
@@ -34,16 +34,16 @@ if __name__ == "__main__":
         cfg = 'CFG' if config else 'CLI'
         print("{}: '{}' ==> ".format(cfg, line), end='')
         if config:
-            if wsma.config(line):
+            if w.config(line):
                 print("OK")
                 return
 
         if not config:
-            if wsma.execCLI(line):
-                print("OK\n{}".format(wsma.output))
+            if w.execCLI(line):
+                print("OK\n{}".format(w.output))
                 return
 
-        print("ERR:\n{}".format(wsma.output))
+        print("ERR:\n{}".format(w.output))
 
     def config(line):
         do(line, True)
@@ -52,10 +52,10 @@ if __name__ == "__main__":
         do(line)
 
     # Create the WSMA utility
-    with WSMA(args.host, args.username, args.password,
-                port=args.port, tls=not args.notls) as wsma:
+    with wsma.HTTP(args.host, args.username, args.password,
+                   port=args.port, tls=not args.notls) as w:
         # do we have a working connection?
-        if wsma is None:
+        if w is None:
             logging.critical('something went wrong, aborting...')
             exit()
 
@@ -71,30 +71,30 @@ if __name__ == "__main__":
             else:
                 if len(line) > 0:
                     execCLI(line)
-        #exit()
+        # exit()
 
-
-        # Exec commands that use parsing to structured data on 
+        # Exec commands that use parsing to structured data on
         # router or switch. Not recommended
         print("\n### Available format specs:\n")
         execCLI('show format built-in')
-        
+
         print("\n### Use built-in format specification:\n")
         cmds = ['show ip interface brief', 'show inventory']
         for cmd in cmds:
-            wsma.execCLI(cmd, format_spec='builtin')
-            if wsma.success:
+            w.execCLI(cmd, format_spec='builtin')
+            if w.success:
                 import json
-                print(json.dumps(wsma.odmFormatResult, indent=2))
+                print(json.dumps(w.odmFormatResult, indent=2))
 
-        ''' 
+        '''
         # beware: execCLI does not like multi-line commands
-        wsma.execCLI("""show inventory\nshow ip interface brief""", format_spec='builtin')
-        if wsma.success:
+        w.execCLI("""show inventory\nshow ip interface brief""",
+                  format_spec='builtin')
+        if w.success:
             import json
-            print(json.dumps(wsma.odmFormatResult, indent=2))
+            print(json.dumps(w.odmFormatResult, indent=2))
         else:
-            print(wsma.output)
+            print(w.output)
 
         '''
 

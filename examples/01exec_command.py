@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 from __future__ import print_function
-from wsma.WSMA import WSMA
-from wsma_config import WSMA_IP, WSMA_USER, WSMA_PASSWORD
+import wsma
+#from wsma_config import WSMA_IP, WSMA_USER, WSMA_PASSWORD
 import json
 
-wsma=WSMA(WSMA_IP, WSMA_USER, WSMA_PASSWORD)
-result = wsma.wsma_exec("show ip int br")
-print("Full response")
-print(json.dumps(result, indent=4))
 
-print("\njust the recieved text")
-print(result['response']['execLog']['dialogueLog']['received']['text'])
+with wsma.HTTP('172.16.33.224', 'vagrant', 'vagrant', port=2224, tls=False) as w:
+    w.execCLI("show ip interface brief")
+    print("\nReceived text:\n%s" % w.output)
+    print("\nFull response:\n%s" % json.dumps(w.data, indent=2))
