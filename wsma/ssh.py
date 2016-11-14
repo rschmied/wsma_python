@@ -25,7 +25,7 @@ class SSH(Base):
         self._cmd_channel = None
         fmt = dict(prot='ssh', host=self.host, port=self.port)
         # in Python3, should use .format_map(fmt)
-        self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
+        self.url = "{prot}://{host}:{port}".format(**fmt)
 
     def connect(self):
         super(SSH, self).connect()
@@ -47,7 +47,7 @@ class SSH(Base):
         self._cmd_channel.invoke_subsystem('wsma')
 
         # should we look for the "wsma-hello" message?
-        hello = self.recv()
+        hello = self._recv()
         idx = hello.find("wsma-hello")
 
         if idx == -1:
