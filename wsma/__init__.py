@@ -28,8 +28,8 @@ CISCO IOS XML RULE EDITOR USER GUIDE
 https://developer.cisco.com/fileMedia/download/c3c98397-5204-4ae6-8678-782239d05ce8
 """
 
-from . import http
-from . import ssh
+from .http import HTTP
+from .ssh import SSH
 
 __version__ = "0.4.1"
 __author__ = 'Adam Radford'
