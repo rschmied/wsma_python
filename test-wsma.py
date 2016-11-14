@@ -59,6 +59,12 @@ if __name__ == "__main__":
             logging.critical('something went wrong, aborting...')
             exit()
 
+        # workaround Python3 vs. Python2 stuff
+        try:
+            input = raw_input
+        except NameError:
+            pass
+
         # simple command line interface
         done = False
         print('enter command, Ctl-D to quit')
