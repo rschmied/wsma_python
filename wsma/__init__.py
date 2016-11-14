@@ -1,2 +1,2 @@
-from WSMA import WSMA
-from WSMA import WSMA_SSH
+from wsma.http import HTTP
+from wsma.ssh import SSH

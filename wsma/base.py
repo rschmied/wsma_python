@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 
 """
-WSMA 
+WSMA
 
 The Web Services Management Agent (WSMA) defines a mechanism through which a
 network device can be managed, configuration data information can be
 retrieved, and new configuration data can be uploaded and manipulated. WSMA
 uses Extensible Markup Language (XML)-based data encoding, that is transported
 by the Simple Object Access Protocol (SOAP), for the configuration data and
-protocol messages. 
+protocol messages.
 
 References:
 
@@ -29,19 +29,13 @@ https://developer.cisco.com/fileMedia/download/c3c98397-5204-4ae6-8678-782239d05
 """
 
 
-from __future__ import print_function
 from abc import ABCMeta, abstractmethod
-import requests
-from requests.exceptions import ConnectionError
-from ssl import SSLError
 from jinja2 import Template
 from xml.dom.minidom import parseString
 from xml.parsers.expat import ExpatError
 import xmltodict
 import json
 import time
-import paramiko
-import socket
 import logging
 
 
@@ -61,7 +55,7 @@ class _Schema(object):
             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <SOAP:Header>
-              <wsse:Security xmlns:wsse="http://schemas.xmlsoap.org/ws/2002/04/secext"  SOAP:mustUnderstand="false">
+              <wsse:Security xmlns:wsse="http://schemas.xmlsoap.org/ws/2002/04/secext" SOAP:mustUnderstand="false">
                   <wsse:UsernameToken>
                      <wsse:Username>{{Username}}</wsse:Username>
                      <wsse:Password>{{Password}}</wsse:Password>
@@ -129,7 +123,7 @@ class _ConfigPersistTemplate(_Schema):
                                         self.end_schema))
 
 
-class WSMAbase(object, metaclass=ABCMeta):
+class Base(object, metaclass=ABCMeta):
     '''
     :param host:  hostname of the WSMA server
     :param username: username to connect
@@ -167,7 +161,7 @@ class WSMAbase(object, metaclass=ABCMeta):
     def _ping(self):
         """
         test the connection, does it make sense to continue?
-        it is assumed that 
+        it is assumed that
         1) wsma is configured on the device (how could we connect otherwise?)
         2) this is a priv-lvl-1 command
         3) this command is platform independent for platforms supporting WSMA
@@ -202,7 +196,7 @@ class WSMAbase(object, metaclass=ABCMeta):
 
         :process CLI output
         :updates self.success, self.output and self.data
-        :returns Bool for success 
+        :returns Bool for success
         '''
         self.success = False
         self.output = ''
@@ -296,7 +290,7 @@ class WSMAbase(object, metaclass=ABCMeta):
             return self.data['response']['execLog']['dialogueLog']['received']['tree']
         except KeyError:
             return None
-    
+
     def execCLI(self, command, format_spec=None):
         '''
         run given command in exec mode, return JSON response
@@ -385,129 +379,5 @@ class WSMAbase(object, metaclass=ABCMeta):
 
         return xmltodict.parse(
             dom.getElementsByTagNameNS(
-                "http://schemas.xmlsoap.org/soap/envelope/", 
+                "http://schemas.xmlsoap.org/soap/envelope/",
                 "Envelope")[0].toxml())
-
-
-class WSMA(WSMAbase):
-    '''
-    This is the HTTP(s) version of transport
-    '''
-
-    def __init__(self, host, username, password, port=443, tls=True, verify=True):
-        super(WSMA, self).__init__(host, username, password, port)
-        fmt = dict(prot='https' if tls else 'http',
-                   host=self.host, port=self.port)
-        # in Python3, should use .format_map(fmt)
-        self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
-        self.verify = verify if tls else False
-
-    def connect(self):
-        super(WSMA, self).connect()
-        self._session = requests.Session()
-        self._session.auth = (self.username, self.password)
-        if not self.verify:
-            requests.packages.urllib3.disable_warnings()
-
-    def disconnect(self):
-        self._session.close()
-
-    def communicate(self, template_data):
-        '''
-
-        :param template_data: xml data to be send
-        :return: json response
-        '''
-        try:
-            r = self._session.post(url=self.url, data=template_data,
-                                   verify=self.verify,
-                                   timeout=self.timeout)
-            logging.debug("DATA: %s", r.text)
-        except (ConnectionError, SSLError) as e:
-            logging.error("Connection Error {}".format(e))
-            self.success = False
-            self.output = e
-            return False
-
-        logging.info("status %s", str(r.status_code))
-        if not r.ok:
-            self.success = False
-            self.output = r.text
-            return False
-
-        # this needs to be response.content,
-        # otherwise generates unicode string error
-        xml_text = r.content.decode("utf-8")
-        return self._process(self.parseXML(xml_text))
-
-
-class WSMA_SSH(WSMAbase):
-    '''
-    this is the SSH version of transport
-    '''
-
-    EOM = "]]>]]>"
-    BUFSIZ = 16384
-
-    def __init__(self, host, username, password, port=22):
-        super(WSMA_SSH, self).__init__(host, username, password, port)
-        self.session = None
-        self._cmd_channel = None
-        fmt = dict(prot='ssh', host=self.host, port=self.port)
-        # in Python3, should use .format_map(fmt)
-        self.url = "{prot}://{host}:{port}/wsma".format(**fmt)
-
-    def connect(self):
-        super(WSMAbase).connect()
-
-        # Socket connection to remote host
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((self.host, self.port))
-        self.session = paramiko.Transport(sock)
-        try:
-            self.session.connect(username=self.username,
-                                 password=self.password)
-        except paramiko.AuthenticationException:
-            logging.error("SSH Authentication failed.")
-            return None
-
-        # Start a wsma channel
-        self._cmd_channel = self.session.open_session()
-        self._cmd_channel.set_name("wsma")
-        self._cmd_channel.invoke_subsystem('wsma')
-
-        # should we look for the "wsma-hello" message?
-        hello = self.recv()
-        idx = hello.find("wsma-hello")
-
-        if idx == -1:
-            logging.error("No wsma-hello from host")
-            return None
-
-    def _send(self, buf):
-        logging.debug("Sending %s", buf)
-        self._cmd_channel.sendall(buf)
-        self._cmd_channel.sendall(EOM)
-
-    def _recv(self):
-        bytes = ""
-        while len(bytes) < len(EOM):
-            x = self._cmd_channel.recv(BUFSIZ)
-            if x == "":
-                return bytes
-            bytes += x
-        idx = bytes.find(EOM)
-        if idx > -1:
-            return bytes[:idx]
-
-    def disconnect(self):
-        # Cleanup
-        self._cmd_channel.close()
-        self.session.close()
-
-    def communicate(self, template_data):
-        # need to check return code
-        self._send(template_data)
-        response = self._recv()
-        logging.debug("DATA: %s", response)
-        return self._process(self.parseXML(response))
