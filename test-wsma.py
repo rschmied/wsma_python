@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+""" execute a few show and config commands """
 
 from __future__ import print_function
 import wsma
@@ -8,7 +9,9 @@ from argparse import ArgumentParser
 import logging
 import readline
 
-if __name__ == "__main__":
+def main(argv):
+
+    # enable basic logging
     logging.basicConfig()
 
     # Get who to talk to and username and password
@@ -58,26 +61,6 @@ if __name__ == "__main__":
         if w is None:
             logging.critical('something went wrong, aborting...')
             exit()
-
-        # workaround Python3 vs. Python2 stuff
-        try:
-            input = raw_input
-        except NameError:
-            pass
-
-        # simple command line interface
-        done = False
-        print('enter command, Ctl-D to quit')
-        while not done:
-            try:
-                line = input("> ")
-            except EOFError:
-                print()
-                done = True
-            else:
-                if len(line) > 0:
-                    execCLI(line)
-        # exit()
 
         # Exec commands that use parsing to structured data on
         # router or switch. Not recommended
@@ -130,3 +113,7 @@ no interface Loop99""")
         print("\n### Negative tests, one for exec, one for config\n")
         execCLI("show ip intbr")
         config("nonsense command")
+
+if __name__ == "__main__":
+    main(sys.argv)
+
