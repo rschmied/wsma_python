@@ -10,9 +10,22 @@ uses Extensible Markup Language (XML)-based data encoding, that is transported
 by the Simple Object Access Protocol (SOAP), for the configuration data and
 protocol messages. 
 
-Reference:
+References:
+
+WSMA Configuration Guide, Cisco IOS Release 15.1M
 http://www.cisco.com/c/en/us/td/docs/ios/netmgmt/configuration/guide/Convert/WSMA/nm_cfg_wsma.html
 
+Cisco IOS Web Services Management Agent Command Reference
+http://www.cisco.com/c/en/us/td/docs/ios-xml/ios/wsma/command/wsma-cr-book/wsma-cr-a1.html
+
+WSMA SDK / PDF:
+https://developer.cisco.com/fileMedia/download/3d65c079-122e-4702-a1ee-233cdf565cb1
+
+Cisco IOS XML-PI Command Reference
+http://www.cisco.com/c/en/us/td/docs/ios-xml/ios/xmlpi/command/xmlpi-cr-book/xmlpi-cr-p1.html
+
+CISCO IOS XML RULE EDITOR USER GUIDE
+https://developer.cisco.com/fileMedia/download/c3c98397-5204-4ae6-8678-782239d05ce8
 """
 
 
@@ -23,6 +36,7 @@ from requests.exceptions import ConnectionError
 from ssl import SSLError
 from jinja2 import Template
 from xml.dom.minidom import parseString
+from xml.parsers.expat import ExpatError
 import xmltodict
 import json
 import time
@@ -71,7 +85,7 @@ class _ExecTemplate(_Schema):
         _Schema.__init__(self)
         self.body = """<request xmlns="urn:cisco:wsma-exec"
                 correlator="{{CORRELATOR}}">
-               <execCLI maxWait="PT100S" xsd="false" {{FORMAT}}>
+               <execCLI maxWait="PT{{TIMEOUT}}S" xsd="false" {{FORMAT}}>
                 <cmd>{{EXEC_CMD}}</cmd>
                </execCLI> """
         self.template = Template("{0}{1}{2}".
@@ -122,10 +136,11 @@ class WSMAbase(object, metaclass=ABCMeta):
     :param password: password for user account
     '''
 
-    def __init__(self, host, username, password, port):
+    def __init__(self, host, username, password, port, timeout=60):
         if not host:
             raise ValueError("host argument may not be empty")
 
+        self.timeout = timeout
         self.host = host
         self.username = username
         self.password = password
@@ -203,12 +218,16 @@ class WSMAbase(object, metaclass=ABCMeta):
             self.success = bool(int(self.data['response']['@success']))
         except KeyError:
             self.output = 'unknown error / key error'
+            return False
 
         # exec mode?
         if self.data['response']['@xmlns'] == "urn:cisco:wsma-exec":
             if self.success:
-                t = self.data['response']['execLog'][
-                    'dialogueLog']['received']['text']
+                try:
+                    t = self.data['response']['execLog'][
+                        'dialogueLog']['received']['text']
+                except KeyError:
+                    t = None
                 t = '' if t is None else t
                 self.output = t
                 return True
@@ -271,6 +290,13 @@ class WSMAbase(object, metaclass=ABCMeta):
     def disconnect(self):
         logging.info("disconnect from {}".format(self.url))
 
+    @property
+    def odmFormatResult(self):
+        try:
+            return self.data['response']['execLog']['dialogueLog']['received']['tree']
+        except KeyError:
+            return None
+    
     def execCLI(self, command, format_spec=None):
         '''
         run given command in exec mode, return JSON response
@@ -285,11 +311,12 @@ class WSMAbase(object, metaclass=ABCMeta):
             format_text = ""
         etmplate = _ExecTemplate()
         template_data = etmplate.template.render(EXEC_CMD=command,
+                                                 TIMEOUT=self.timeout,
                                                  CORRELATOR=correlator,
                                                  FORMAT=format_text,
                                                  Username=self.username,
                                                  Password=self.password)
-        logging.debug("Template {0:s}".format(template_data))
+        logging.debug("Template {}".format(template_data))
         return self.communicate(template_data)
 
     def config(self, command, action_on_fail="stop"):
@@ -345,7 +372,11 @@ class WSMAbase(object, metaclass=ABCMeta):
         """
 
         logging.debug("XML string: {}".format(xml_text))
-        dom = parseString(xml_text)
+        try:
+            dom = parseString(xml_text)
+        except ExpatError as e:
+            return {'error': '%s' % e}
+
         logging.debug("XML tree:{}".format(dom.childNodes[-1].toprettyxml()))
 
         response = dom.getElementsByTagName('response')
@@ -390,7 +421,7 @@ class WSMA(WSMAbase):
         try:
             r = self._session.post(url=self.url, data=template_data,
                                    verify=self.verify,
-                                   timeout=60)
+                                   timeout=self.timeout)
             logging.debug("DATA: %s", r.text)
         except (ConnectionError, SSLError) as e:
             logging.error("Connection Error {}".format(e))
