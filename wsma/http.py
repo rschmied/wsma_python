@@ -43,7 +43,7 @@ class HTTP(Base):
     def disconnect(self):
         '''Disconnect the session
         '''
-        super(HTTP, self).connect()
+        super(HTTP, self).disconnect()
         self._session.close()
 
     def communicate(self, template_data):
