@@ -12,7 +12,7 @@ $ source env/bin/activate
 
 # now copy the code from GitHub
 $ git clone https://github.com/aradford123/wsma_python
-$ cd wmsa_python
+$ cd wsma_python
 
 # install it in the virtual environement
 $ python setup.py install
