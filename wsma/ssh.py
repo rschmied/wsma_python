@@ -22,7 +22,7 @@ class SSH(Base):
     EOM = "]]>]]>"
     BUFSIZ = 16384
 
-    def __init__(self, host, username, password, port=22):
+    def __init__(self, host, username, password, port=22, **kwargs):
         super(SSH, self).__init__(host, username, password, port, **kwargs)
         self.session = None
         self._cmd_channel = None
@@ -36,9 +36,9 @@ class SSH(Base):
         self._cmd_channel.sendall(self.EOM)
 
     def _recv(self):
-        bytes = ""
+        bytes = u""
         while len(bytes) < len(self.EOM):
-            x = self._cmd_channel.recv(self.BUFSIZ)
+            x = self._cmd_channel.recv(self.BUFSIZ).decode('utf-8')
             if x == "":
                 return bytes
             bytes += x
