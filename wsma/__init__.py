@@ -31,7 +31,7 @@ https://developer.cisco.com/fileMedia/download/c3c98397-5204-4ae6-8678-782239d05
 from .http import HTTP
 from .ssh import SSH
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 __author__ = 'Adam Radford'
 __copyright__ = 'Copyright 2016 Cisco Systems Inc.'
 __license__ = 'Apache 2.0'
