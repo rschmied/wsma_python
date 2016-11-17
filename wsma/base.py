@@ -174,23 +174,21 @@ class Base(object):
         self._count += 1
         return result
 
-    def _process(self, data):
+    def _process(self, xml_data):
         '''Process the given data dict and populate instance vars:
         - success: was the call successful (bool)
         - output: holds CLI output (e.g. for show commands), (string)
                   if the call wass successful.
                   it holds the error message (typos, config and exec)
                   if not successful
-        - data: holds the raw dict from the device
+        - xml_data: holds the XML data received from the device
 
         :param data: dictionary with response data
         :rtype: bool
         '''
-        self.success = False
-        self.output = ''
-        self.data = data
-
-        if self.data is None:
+        self.data = self.parseXML(xml_data)
+        # did the parsing yield an error?
+        if self.data.get('error') is not None:
             return False
 
         logging.info("JSON data: %s", json.dumps(self.data, indent=4))
@@ -248,15 +246,27 @@ class Base(object):
 
     @abstractmethod
     def communicate(self, template_data):
-        '''Needs to be overwritten in subclass, it should process the
-        'template_data' by sending it using the selected transport.
-        Then pass the received response data through _process(),
-        returning the result from _process().
+        '''Needs to be overwritten in subclass, it should process
+        provided template_data by sending it using the selected
+        transport. Essentially:
+
+            return self._process(send(data))
+
+        Assuming that send(template_data) returns XML from the device.
 
         :param template_data: XML string to be sent in transaction
         :rtype: bool
         '''
-        pass
+        self.success= True
+        self.output = ''
+        self.data = None
+
+        # make sure we have a session
+        if self._session == None:
+            self.output = 'no established session!'
+            self.success= False
+
+        return self.success
 
     @abstractmethod
     def connect(self):
@@ -273,17 +283,26 @@ class Base(object):
         '''Disconnects the transport
         '''
         logging.info("disconnect from {}".format(self.url))
+        self._session = None
 
     @property
     def odmFormatResult(self):
         '''When using format specifications (e.g. structured data
         instead of unstructured CLI output) then this property
         holds the structured data as an object.
+        :rtype dict:
         '''
         try:
             return self.data['response']['execLog']['dialogueLog']['received']['tree']
         except KeyError:
             return None
+
+    @property
+    def hasSession(self):
+        '''checks whether we have a valid session or not.
+        :rtype bool:
+        '''
+        return self._session is not None and self._ping()
 
     def execCLI(self, command, format_spec=None):
         '''Run given command in exec mode, return JSON response. The
@@ -359,7 +378,7 @@ class Base(object):
         :rtype: dict
         '''
         if xml_text is None:
-            return {'error': 'XML body is empty'}
+            return dict(error='XML body is empty')
 
         """
         from lxml import etree
@@ -374,7 +393,7 @@ class Base(object):
         try:
             dom = parseString(xml_text)
         except ExpatError as e:
-            return {'error': '%s' % e}
+            return dict(error='%s' % e)
 
         logging.debug("XML tree:{}".format(dom.childNodes[-1].toprettyxml()))
 
