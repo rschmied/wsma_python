@@ -43,8 +43,8 @@ class HTTP(Base):
     def disconnect(self):
         '''Disconnect the session
         '''
-        super(HTTP, self).disconnect()
         self._session.close()
+        super(HTTP, self).disconnect()
 
     def communicate(self, template_data):
         '''Overwrites base method, implements HTTP transport.
@@ -52,24 +52,26 @@ class HTTP(Base):
         :param template_data: xml data to be send
         :rtype: json response
         '''
+        super(HTTP, self).communicate(template_data)
+        if not self.success:
+            return False
+
         try:
             r = self._session.post(url=self.url, data=template_data,
                                    verify=self.verify,
                                    timeout=self.timeout)
-            logging.debug("DATA: %s", r.text)
         except (ConnectionError, SSLError) as e:
             logging.error("Connection Error {}".format(e))
-            self.success = False
             self.output = e
             return False
 
         logging.info("status %s", str(r.status_code))
         if not r.ok:
-            self.success = False
             self.output = r.text
             return False
 
         # this needs to be response.content,
         # otherwise generates unicode string error
         xml_text = r.content.decode("utf-8")
-        return self._process(self.parseXML(xml_text))
+        logging.debug("DATA: %s", xml_text)
+        return self._process(xml_text)
