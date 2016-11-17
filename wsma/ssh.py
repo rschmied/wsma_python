@@ -24,7 +24,6 @@ class SSH(Base):
 
     def __init__(self, host, username, password, port=22, **kwargs):
         super(SSH, self).__init__(host, username, password, port, **kwargs)
-        self.session = None
         self._cmd_channel = None
         fmt = dict(prot='ssh', host=self.host, port=self.port)
         # in Python3, should use .format_map(fmt)
@@ -54,38 +53,42 @@ class SSH(Base):
         # Socket connection to remote host
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.host, self.port))
-        self.session = paramiko.Transport(sock)
+        self._session = paramiko.Transport(sock)
         try:
-            self.session.connect(username=self.username,
-                                 password=self.password)
+            self._session.connect(username=self.username,
+                                  password=self.password)
         except paramiko.AuthenticationException:
             logging.error("SSH Authentication failed.")
-            return None
+            self.disconnect()
 
         # Start a wsma channel
-        self._cmd_channel = self.session.open_session()
+        self._cmd_channel = self._session.open_session()
         self._cmd_channel.set_name("wsma")
         self._cmd_channel.invoke_subsystem('wsma')
 
-        # should we look for the "wsma-hello" message?
+        # look for the "wsma-hello" message
         hello = self._recv()
         idx = hello.find("wsma-hello")
 
         if idx == -1:
             logging.error("No wsma-hello from host")
-            return None
+            self.disconnect()
 
     def disconnect(self):
         '''Disconnect the SSH session
         '''
-        super(SSH, self).disconnect()
         self._cmd_channel.close()
-        self.session.close()
+        self._session.close()
+        super(SSH, self).disconnect()
 
     def communicate(self, template_data):
         '''Communicate with the WSMA service using SSH
         '''
+        super(SSH, self).communicate(template_data)
+        if not self.success:
+            return False
+
         self._send(template_data)
         response = self._recv()
         logging.debug("DATA: %s", response)
-        return self._process(self.parseXML(response))
+        return self._process(response)
