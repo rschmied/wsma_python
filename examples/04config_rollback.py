@@ -1,14 +1,19 @@
 #!/usr/bin/env python
 from __future__ import print_function
-from wsma.WSMA import WSMA
-from wsma_config import WSMA_IP, WSMA_USER, WSMA_PASSWORD
 import json
-import logging
+import wsma
+from wsma_config import host, user, password, port
 
-# comment this out to turn off debug
-# logging.basicConfig(level=logging.DEBUG)
+"""
+IOS device must be configured for config rollback:
+archive
+ log config
+  record rc
+ path flash:
+"""
 
-wsma = WSMA(WSMA_IP, WSMA_USER, WSMA_PASSWORD)
+with wsma.HTTP(host, user, password) as w:
+    # note that there is a typo ('ebd') which triggers a rollback
+    w.config('ip access-list extended 101\n permit ip any any \nebd', action_on_fail='rollback')
+    print("\nReceived data:\n%s" % json.dumps(w.data, indent=2))
 
-result = wsma.wsma_config("ip access-list extended 101\n permit ip any any \nend", action_on_fail='rollback')
-print(json.dumps(result, indent=4))

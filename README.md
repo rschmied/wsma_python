@@ -1,8 +1,7 @@
 # wsma_python
 This Python module shows some examples of interacting with the WSMA (Web Services Management Agent) protocol on Cisco devices.
 
-WSMA is supported on most Cisco enterprise devices (routers/switches), and first shipped in 2007.
-WSMA can run over http(s) or ssh.
+WSMA is supported on most Cisco enterprise devices (routers/switches), and first shipped in 2007. WSMA can run over HTTP(S) or SSH.
 
 ## Installation
 
@@ -13,7 +12,7 @@ $ source env/bin/activate
 
 # now copy the code from GitHub
 $ git clone https://github.com/aradford123/wsma_python
-$ cd wmsa_python
+$ cd wsma_python
 
 # install it in the virtual environement
 $ python setup.py install
@@ -23,10 +22,9 @@ $ python setup.py install
 $ ./examples/00show_run.py
 ```
 
-You can also use the script `./enable_wsma.py <ip> <username> <password>` to configure WSMA if required on your device.  
-This configures WSMA over https, you can also use HTTP or SSH as a transport.
+You can also use the script `./enable_wsma.py <ip> <username> <password>` to configure WSMA if required on your device. This configures WSMA over HTTPS, but you can also use HTTP or SSH as the transport.
 
-You can also just paste in this config snippet.  This configures HTTPS transport (also supports SSH/HTTP) and local Authentication (can also support AAA)
+You can also just paste in the following config snippet. This configures the HTTPS transport (devices also support SSH or HTTP) and local authentication (device can also support AAA).
 
 ```
 ip http secure-server

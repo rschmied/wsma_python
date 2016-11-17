@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 from __future__ import print_function
-from wsma.WSMA import WSMA
-from wsma_config import WSMA_IP, WSMA_USER, WSMA_PASSWORD
-import json
+import wsma
+from wsma_config import host, user, password
 
-wsma = WSMA(WSMA_IP, WSMA_USER, WSMA_PASSWORD)
-result = wsma.wsma_exec_text("show run")
-print(result)
+with wsma.HTTP(host, user, password) as w:
+    w.execCLI("show run")
+    print(w.output)
+
