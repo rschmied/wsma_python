@@ -17,6 +17,9 @@ $ cd wsma_python
 # install it in the virtual environement
 $ python setup.py install
 
+# can also be done in one step:
+$ pip install git+https://github.com/aradford123/wsma_python.git
+
 # update examples/wsma_config.py to point to your device, with appropriate credentials
 
 $ ./examples/00show_run.py
